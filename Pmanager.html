@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pmanager</title>
+    <link rel="stylesheet" href="StyleSheet.css">
+</head>
+<body>
+    <div class="container">
+        <div class="title-box">
+            <h1>Pmanager</h1>
+            <h3>
+                Welcome to Pmanager! <br />
+                We're glad you're here.<br />
+                Pmanager securely stores all your passwords in one place, making it easy to access your login details whenever you need them. No more forgetting or hunting for passwords!
+                <br />
+                From social media to banking, Pmanager keeps everything safe and available at your fingertips. Enjoy a simpler, more secure way to manage your online accounts!
+            </h3>
+        </div>
+
+        <div class="auth-box">
+            <h2>Register</h2>
+            <input type="text" id="regUsername" placeholder="Enter Username">
+            <input type="password" id="regPassword" placeholder="Enter Password">
+            <button onclick="registerUser(document.getElementById('regUsername').value, document.getElementById('regPassword').value)">Register</button>
+        </div>
+
+        <div class="auth-box">
+            <h2>Login</h2>
+            <input type="text" id="loginUsername" placeholder="Enter Username">
+            <input type="password" id="loginPassword" placeholder="Enter Password">
+            <button onclick="loginUser(document.getElementById('loginUsername').value, document.getElementById('loginPassword').value)">Login</button>
+        </div>
+
+        <div class="auth-box">
+            <h2>Save a Password</h2>
+            <input type="text" id="siteName" placeholder="Enter Site Name">
+            <input type="password" id="sitePassword" placeholder="Enter Site Password">
+            <button onclick="addOrUpdatePassword(document.getElementById('loginUsername').value, document.getElementById('siteName').value, document.getElementById('sitePassword').value)">Save Password</button>
+        </div>
+
+        <div class="auth-box">
+            <h2>Delete Saved Passwords</h2>
+            <input type="password" id="deleteTrue" placeholder="Re-enter Password">
+            <button onclick="deletePasswords(document.getElementById('loginUsername').value)">Delete Saved Passwords</button>
+            <button id="themeToggle">Toggle Light/Dark Mode</button>
+        </div>
+        <div class="auth-box">
+            <h2>View Saved Passwords</h2>
+            <button onclick="viewPasswords(document.getElementById('loginUsername').value)">View Saved Passwords</button>
+            <div id="outputBox"></div>
+           
+        </div>
+        <div class="auth-box">
+            <h2>Generate Password</h2>
+            <button onclick="genPassword()">Generate</button>
+            <div id="generatedPassword"></div>
+        </div>
+        <div class="auth-box">
+            <h2>Strength Tester</h2>
+            <input type="password" id="passwordInput" placeholder="Enter your password" oninput="checkPasswordStrength()">
+            <div id="strengthContainer">
+                <progress id="strengthBar" value="0" max="100"></progress>
+                <span id="strengthText">Weak</span>
+            </div>
+            <input type="file" id="fileInput" accept=".json">
+            <button onclick="SJson()">Download JSON</button>
+            <script>
+                let jsonData = { saved: [] }; // Initialize with an empty structure
+                // Check if a string is valid base64
+                function isBase64(str) {
+                    try {
+                        return btoa(atob(str)) === str;
+                    } catch (err) {
+                        return false;
+                    }
+                }
+                document.getElementById("fileInput").addEventListener("change", function (event) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+
+                    const reader = new FileReader();
+                    reader.onload = function (e) {
+                        console.log("Raw File Content:", e.target.result); // Debugging
+
+                        try {
+                            let uploadedData = JSON.parse(e.target.result);
+                            console.log("Parsed JSON:", uploadedData); 
+
+                            if (!uploadedData.saved || !Array.isArray(uploadedData.saved)) {
+                                throw new Error("Invalid structure: Missing 'saved' array");
+                            }
+
+                            let storedData = JSON.parse(localStorage.getItem("Password_stored")) || {};
+                            let username = document.getElementById("loginUsername").value;
+
+                            if (!storedData[username]) {
+                                storedData[username] = { masterPassword: "", savedPasswords: {} };
+                            }
+
+                            uploadedData.saved.forEach(entry => {
+                                if (entry.sitename && entry.password) {
+                                    let decryptedPass = entry.password;
+                                    //fix error that happens when decoding cypher in not 64
+                                    if (isBase64(decryptedPass)) {
+                                        try {
+                                            decryptedPass = decrypt(decryptedPass);
+                                            console.log(`Decrypted password for ${entry.sitename}: ${decryptedPass}`);
+                                        } catch (error) {
+                                            console.warn(`Skipping decryption for ${entry.sitename}: Invalid base64`);
+                                        }
+                                    } else {
+                                        console.log(`Password for ${entry.sitename} is already plaintext: ${decryptedPass}`);
+                                    }
+
+                                    storedData[username].savedPasswords[entry.sitename] = encrypt(decryptedPass);
+                                }
+                            });
+
+                            localStorage.setItem("Password_stored", JSON.stringify(storedData));
+
+                            document.getElementById("outputBox").innerText = JSON.stringify(storedData[username].savedPasswords, null, 2);
+                            alert("Passwords successfully uploaded and merged!");
+
+                        } catch (error) {
+                            console.error("JSON Parse Error:", error.message);
+                            alert("Invalid JSON file format. See console for details.");
+                        }
+                    };
+
+                    reader.readAsText(file);
+                });
+
+
+                function addEntry() {
+                    const site = document.getElementById("siteName").value.trim();
+                    const pass = document.getElementById("password").value.trim();
+                    addOrUpdatePassword(username, site, sitePassword)
+                    if (!site || !pass) {
+                        alert("Both fields are required!");
+                        return;
+                    }
+
+                    jsonData.saved.push({ sitename: site, password: pass });
+                    document.getElementById("outputBox").innerText = JSON.stringify(jsonData, null, 2);
+                    document.getElementById("siteName").value = "";
+                    document.getElementById("password").value = "";
+                }
+
+
+                function SJson() {
+                    const username = document.getElementById("loginUsername").value;
+                    let data = loadPasswords();
+
+                    if (!data[username]) {
+                        alert("You must be logged in to download your passwords.");
+                        return;
+                    }
+
+                    let passwordsArray = Object.entries(data[username].savedPasswords).map(([site, encryptedPass]) => ({
+                        sitename: site,
+                        password: decrypt(encryptedPass)
+                    }));
+
+                    const blob = new Blob([JSON.stringify({ saved: passwordsArray }, null, 2)], { type: "application/json" });
+                    const a = document.createElement("a");
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `${username}_passwords.json`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                }
+
+       
+            </script>
+        </div>
+    </div>
+    <script src="passwordManager.js"></script>
+</body>
+</html>
